@@ -1,0 +1,69 @@
+name: Build and deploy ASP.Net Core app to AWS - didactic-api
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up .NET Core
+        uses: actions/setup-dotnet@v1
+        with:
+          dotnet-version: '6.0.x'
+          include-prerelease: true
+
+      - name: Build with dotnet
+        run: dotnet build --configuration Release
+
+      - name: Stop the service
+        uses: appleboy/ssh-action@master
+        with:
+          key: ${{ secrets.AWS_REPO_KEY }}
+          host: "3.131.160.60"
+          username: "ubuntu"
+          port: 22
+          script: sudo systemctl stop didactic-verse
+
+      - name: Prep ec2 destination
+        uses: appleboy/ssh-action@master
+        with:
+          key: ${{ secrets.AWS_REPO_KEY }}
+          host: "3.131.160.60"
+          username: "ubuntu"
+          port: 22
+          script: rm -rf /home/ubuntu/temp/*
+          
+      - name: Upload to ec2
+        uses: easingthemes/ssh-deploy@main
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.AWS_REPO_KEY }}
+          ARGS: "-rltgoDzvO"
+          SOURCE: "."
+          REMOTE_HOST: "3.131.160.60"
+          REMOTE_USER: "ubuntu"
+          TARGET: "/home/ubuntu/temp"
+
+      - name: Publish code
+        uses: appleboy/ssh-action@master
+        with:
+          key: ${{ secrets.AWS_REPO_KEY }}
+          host: "3.131.160.60"
+          username: "ubuntu"
+          port: 22
+          script: cd /home/ubuntu/temp && dotnet publish -c Release -o /opt/api
+
+      - name: Restart the service
+        uses: appleboy/ssh-action@master
+        with:
+          key: ${{ secrets.AWS_REPO_KEY }}
+          host: "3.131.160.60"
+          username: "ubuntu"
+          port: 22
+          script: sudo systemctl start didactic-verse
